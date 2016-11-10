@@ -1,0 +1,108 @@
+- hosts: 127.0.0.1
+  connection: localhost
+  vars:
+    source_dir: "{{ playbook_dir }}/src"
+    lambda_name: NotifySlackOfAWSBilling
+    role_name: "Lambda{{ lambda_name }}"
+    policy_name: "Lambda{{ lambda_name }}"
+    lambda_input:
+      slack_url: "{{ slack_url }}"
+  tasks:
+    - name: install required pkg
+      pip:
+        requirements: "requirements.txt"
+        extra_args: "-t site-packages"
+        chdir: "{{ source_dir }}"
+
+    - name: create lambda.zip
+      shell: zip -ur lambda.zip *
+      register: create_lambda_zip
+      changed_when: create_lambda_zip.rc != 12
+      failed_when: create_lambda_zip.rc not in [0, 12]
+      args:
+        chdir: "{{ source_dir }}"
+
+    - name: create role
+      iam:
+        iam_type: role
+        name: "{{ role_name }}"
+        state: present
+        trust_policy:
+          Version: '2012-10-17'
+          Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+
+    - name: attatch policy
+      iam_policy:
+        iam_type: role
+        iam_name: "{{ role_name }}"
+        state: present
+        policy_name: "{{ policy_name }}"
+        policy_json:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - cloudwatch:GetMetricStatistics
+              Resource: '*'
+
+    - name: get role arn
+      command: "aws iam get-role --role-name {{ role_name }}"
+      changed_when: false
+      register: role
+
+    - set_fact:
+        role_arn: "{{ (role.stdout|from_json).Role.Arn }}"
+
+    - name: create lambda function
+      lambda:
+        name: "{{ lambda_name }}"
+        zip_file: "{{ source_dir }}/lambda.zip"
+        handler: lambda_function.lambda_handler
+        runtime: python2.7
+        role: "{{ role_arn }}"
+
+    - name: get lambda arn
+      command: "aws lambda get-function --function-name {{ lambda_name }}"
+      changed_when: false
+      register: lambda
+
+    - set_fact:
+          lambda_arn: "{{ (lambda.stdout|from_json).Configuration.FunctionArn }}"
+
+    - name: create cloudwatch event
+      cloudwatchevent_rule:
+        name: "{{ lambda_name }}"
+        schedule_expression: cron(0 3 * * ? *)
+        description: "{{ lambda_name }} cron"
+        role_arn: "{{ role_arn }}"
+        targets:
+          - id: "{{ lambda_name }}"
+            arn: "{{ lambda_arn }}"
+            input: "{{ lambda_input|to_json }}"
+      register: event
+
+    - name: aws lambda add-permission
+      command: >-
+        aws lambda add-permission
+        --function-name {{ lambda_name }}
+        --statement-id 'cron'
+        --action "lambda:InvokeFunction"
+        --principal events.amazonaws.com
+        --source-arn {{ event.rule.arn }}
+      register: add_permission
+      changed_when: "{{ 'provided already exists' not in add_permission.stderr }}"
+      failed_when: "{{ add_permission.rc != 0 }} and {{ 'provided already exists' not in add_permission.stderr }}"
