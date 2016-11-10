@@ -4,9 +4,7 @@ import sys
 
 import boto3
 
-
 sys.path.append("./site-packages")
-
 
 
 def lambda_handler(event, context):
@@ -20,7 +18,6 @@ def lambda_handler(event, context):
     del context
 
     slack_url = event["slack_url"]
-
 
     end = datetime.datetime.now(pytz.utc)
     start = end - datetime.timedelta(days=2)
