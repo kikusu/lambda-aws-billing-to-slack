@@ -8,10 +8,12 @@ sys.path.append("./site-packages")
 
 
 def lambda_handler(event, context):
-    """
+    """ Lambda Handler
+
     :param event:
     :param context:
-    """
+"""
+
     import pytz
     import slackweb
 
@@ -22,14 +24,8 @@ def lambda_handler(event, context):
     end = datetime.datetime.now(pytz.utc)
     start = end - datetime.timedelta(days=2)
 
-    cloud_watch = boto3.client("cloudwatch", region_name="us-east-1")
-
-    def fee_format(metric):
-        result = sorted(metric["Datapoints"], key=lambda x: x["Timestamp"])
-        diff = result[-1]["Maximum"] - result[0]["Maximum"]
-        now = result[1]["Maximum"]
-
-        return "${} (+ ${})".format(now, diff)
+    cloudwatch = boto3.resource("cloudwatch", region_name="us-east-1")
+    metric = cloudwatch.Metric("AWS/Billing", "EstimatedCharges")
 
     def get_metrics(service_name=None):
         dimensions = [{u'Name': 'Currency', u'Value': 'USD'}]
@@ -37,15 +33,19 @@ def lambda_handler(event, context):
         if service_name is not None:
             dimensions.append({u"Name": "ServiceName", u"Value": service_name})
 
-        return cloud_watch.get_metric_statistics(
+        data = metric.get_statistics(
             Dimensions=dimensions,
-            Namespace="AWS/Billing",
-            MetricName="EstimatedCharges",
             StartTime=start,
             EndTime=end,
             Period=60 * 60 * 24,
             Statistics=["Maximum"]
         )
+
+        result = sorted(data["Datapoints"], key=lambda x: x["Timestamp"])
+        diff = result[1]["Maximum"] - result[0]["Maximum"]
+        now = result[1]["Maximum"]
+
+        return "${} (+ ${})".format(now, diff)
 
     slack = slackweb.Slack(slack_url)
     slack.notify(
@@ -56,9 +56,9 @@ def lambda_handler(event, context):
                         "%Y-%m-%dT%H:%M:%S")),
                 fields=[
                     dict(title="Sum",
-                         value=fee_format(get_metrics())),
+                         value=get_metrics()),
                     dict(title="EC2",
-                         value=fee_format(get_metrics("AmazonEC2")),
+                         value=get_metrics("AmazonEC2"),
                          short=True)
                 ],
                 color="good"),
