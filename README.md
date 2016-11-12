@@ -7,8 +7,8 @@ Notify aws billing to slack every day(JST 12:00).
 
 ## config
 ### slack incoming webhook
-- delete `host_vars/127.0.0.1/vault.yml`
-- edit `host_vars/127.0.0.1/vars.yml`
+- delete `group_vars/all/vault.yml`
+- edit `group_vars/all/vars.yml`
 ```yaml
 slack_url: <your slack incoming webhook>
 ```
