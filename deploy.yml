@@ -2,7 +2,7 @@
   connection: localhost
   vars:
     source_dir: "{{ playbook_dir }}/src"
-    lambda_name: NotifySlackOfAWSBilling
+    lambda_name: AWSBillingToSlack
     role_name: "Lambda{{ lambda_name }}"
     policy_name: "Lambda{{ lambda_name }}"
     lambda_input:
