@@ -1,5 +1,6 @@
 # coding:utf-8
 import datetime
+import json
 import sys
 
 import boto3
@@ -17,9 +18,11 @@ def lambda_handler(event, context):
     import pytz
     import slackweb
 
-    del context
+    del context, event
 
-    slack_url = event["slack_url"]
+    boto_s3 = boto3.resource("s3")
+    obj = boto_s3.Object("kikusu-config", "slack/kikusu-incoming-webhook.json")
+    slack_url = json.load(obj.get()["Body"])["url"]
 
     end = datetime.datetime.now(pytz.utc)
     start = end - datetime.timedelta(days=2)
