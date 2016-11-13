@@ -1,4 +1,4 @@
-# lambda-notify-slack-of-aws-billing
+# lambda-aws-billing-to-slack
 
 Notify aws billing to slack every day(JST 12:00). 
 
